@@ -40,7 +40,7 @@ describe("subagent extension child mode", () => {
 			});
 			registerSubagentExtension(fakePi);
 			if (!registeredTool) throw new Error("tool not registered");
-			if (registeredTool.exposure !== "model-only") throw new Error("codemode scripts must not call subagent, got exposure " + registeredTool.exposure);
+			if (registeredTool.exposure !== "deferred") throw new Error("the parent's subagent tool must be callable from codemode scripts and never declared, got exposure " + registeredTool.exposure);
 			const calls = [];
 			const ctx = {
 				cwd: process.cwd(),

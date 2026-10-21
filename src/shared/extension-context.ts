@@ -8,6 +8,31 @@ import type { ExtensionContext } from "@earendil-works/pi-coding-agent";
  */
 export const MODEL_ONLY_TOOL = { exposure: "model-only" } as const;
 
+/**
+ * Keeps a tool out of the request while leaving it callable from codemode scripts and other
+ * `ctx.executeTool()` callers. The parent's delegating tools use it: a session that declares only
+ * its own direct tools calls `tools.subagent(...)` from a script. `hidden` tools are not callable.
+ */
+export const SCRIPT_ONLY_TOOL = { exposure: "deferred" } as const;
+
+/** The `exposure` Pi reports for a registered tool, or undefined on a host that predates it. */
+export function toolExposure(pi: { getAllTools?: () => readonly { name: string }[] }, name: string): string | undefined {
+	try {
+		const tool = pi.getAllTools?.().find((candidate) => candidate.name === name) as { exposure?: string } | undefined;
+		return tool?.exposure;
+	} catch {
+		return undefined;
+	}
+}
+
+/**
+ * Whether naming a tool in `pi.setActiveTools()` declares it to the model. Pi skips only `hidden`
+ * tools, so naming a script-only tool would put it back in the request; scripts reach it anyway.
+ */
+export function declaresToModel(exposure: string | undefined): boolean {
+	return exposure !== "deferred" && exposure !== "codemode" && exposure !== "hidden";
+}
+
 /** Pi exposes replaced extension contexts as ordinary Errors without a stable code. */
 export function isStaleExtensionContextError(error: unknown): boolean {
 	return error instanceof Error

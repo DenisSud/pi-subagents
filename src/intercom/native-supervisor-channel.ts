@@ -12,7 +12,7 @@ import { inheritedSessionIds } from "../shared/session-succession.ts";
 import { ownsRun } from "../runs/shared/run-ownership.ts";
 import { writeAtomicJson, writePrivateAtomicJson } from "../shared/atomic-json.ts";
 import { shouldUseNativeFsWatch } from "../shared/watch-strategy.ts";
-import { MODEL_ONLY_TOOL } from "../shared/extension-context.ts";
+import { declaresToModel, MODEL_ONLY_TOOL, SCRIPT_ONLY_TOOL, toolExposure } from "../shared/extension-context.ts";
 import {
 	SUPERVISOR_REQUEST_MESSAGE_TYPE,
 	SUPERVISOR_REPLY_ENTRY_TYPE,
@@ -291,6 +291,9 @@ export const TOP_LEVEL_SUPERVISOR_REFUSAL = "contact_supervisor works only insid
 export function topLevelSupervisorTool(): ToolDefinition<typeof ContactSupervisorParamsSchema, Record<string, unknown>> {
 	return {
 		...CONTACT_SUPERVISOR_DECLARATION,
+		// The parent answers a child's request from a codemode script or not at all: this refusal is
+		// no use to the model, so it stays out of the request. A child keeps the declaring declaration.
+		...SCRIPT_ONLY_TOOL,
 		async execute() {
 			return { isError: true, content: [{ type: "text", text: TOP_LEVEL_SUPERVISOR_REFUSAL }], details: {} };
 		},
@@ -647,7 +650,7 @@ function publicPendingRequests(pending: Map<string, PendingSupervisorRequest>): 
 function buildParentSupervisorTool(pi: ExtensionAPI, pending: Map<string, PendingSupervisorRequest>, state: SubagentState, onLifecycle: SupervisorRequestLifecycleObserver, discover: () => void, runState: (request: SupervisorRequest) => SubagentState): ToolDefinition<typeof IntercomParamsSchema, Record<string, unknown>> {
 	return {
 		name: NATIVE_SUPERVISOR_TOOL_NAME,
-		...MODEL_ONLY_TOOL,
+		...SCRIPT_ONLY_TOOL,
 		label: "Subagent Supervisor",
 		description: "Native pi-subagents supervisor channel. Use reply/pending/status to answer child subagent requests without overriding pi-intercom.",
 		parameters: IntercomParamsSchema,
@@ -788,6 +791,8 @@ export function createNativeSupervisorChannel(pi: ExtensionAPI, state: SubagentS
 		if (typeof pi.getActiveTools !== "function" || typeof pi.setActiveTools !== "function") return;
 		const active = pi.getActiveTools();
 		if (!Array.isArray(active) || active.includes(NATIVE_SUPERVISOR_TOOL_NAME) || !hasTool(pi, NATIVE_SUPERVISOR_TOOL_NAME)) return;
+		// A script-only tool is callable from codemode while inactive; declaring it would cost prompt.
+		if (!declaresToModel(toolExposure(pi, NATIVE_SUPERVISOR_TOOL_NAME))) return;
 		pi.setActiveTools([...active, NATIVE_SUPERVISOR_TOOL_NAME]);
 	};
 

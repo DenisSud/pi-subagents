@@ -5,6 +5,7 @@ import { resolveWaitToolConfig, waitForSubagents } from "./subagent-wait.ts";
 import type { WaitSubscriptionManager } from "./wait-subscriptions.ts";
 import { finalizeToolResult } from "../../extension/tool-result.ts";
 import { registerPinnedTool } from "../../extension/declaration-pinning.ts";
+import { SCRIPT_ONLY_TOOL } from "../../shared/extension-context.ts";
 
 export function registerWaitTool(
 	pi: ExtensionAPI,
@@ -14,6 +15,8 @@ export function registerWaitTool(
 	defaultTimeoutMs?: number,
 	child?: { nestedRootRunId?: string },
 	hasPendingSupervisorRequest?: () => boolean,
+	// A parent calls bg_wait from a codemode script; a child runtime declares it as an ordinary tool.
+	exposure: "direct" | "deferred" = "direct",
 ): void {
 	const description = `Wait for background work, then return. ${child ? "This child runtime has no native completion notifier: use blocking bg_wait to collect your owned descendants this turn and read their result references; agent_end draining does not synthesize results." : "Ordinary async subagent runs already wake this session natively; use bg_wait only for provider, detached, or other background work without native notification, when a same-turn result is needed."}
 {} — first active run or provider item to finish or need attention.
@@ -48,6 +51,7 @@ Timeout or a user message ends the wait without error; work keeps running.${enab
 	};
 	const primaryTool: ToolDefinition<typeof SubagentWaitParams, Details> = {
 		name: "bg_wait",
+		...(exposure === "deferred" ? SCRIPT_ONLY_TOOL : {}),
 		label: "Background Wait",
 		description,
 		parameters: SubagentWaitParams,

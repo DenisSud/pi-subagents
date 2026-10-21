@@ -4,6 +4,7 @@ description: |
   Technical guidance for operator-requested delegation to builtin or custom
   subagents: bounded handoffs, parallel review, scripted workflows, async work,
   forked context, isolation, and coordinated execution.
+disable-model-invocation: true
 ---
 
 # Pi Subagents

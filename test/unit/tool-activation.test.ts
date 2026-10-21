@@ -646,7 +646,9 @@ describe("contact_supervisor in a top-level session", () => {
 
 		assert.ok(parent && child);
 		assert.deepEqual(toToolDeclaration(parent as never), toToolDeclaration(child as never));
-		assert.equal((parent as { exposure?: string }).exposure, (child as { exposure?: string }).exposure);
+		// The parent's refusal is script-only; the child's working tool is an ordinary model call.
+		assert.equal((parent as { exposure?: string }).exposure, "deferred");
+		assert.equal((child as { exposure?: string }).exposure, "model-only");
 		const result = await parent.execute?.("call-1", { reason: "need_decision", message: "?" }, new AbortController().signal, undefined, runtime.context);
 		assert.equal(result?.isError, true);
 		assert.equal(result?.content[0]?.text, TOP_LEVEL_SUPERVISOR_REFUSAL);

@@ -29,7 +29,7 @@ import { cleanupAllArtifactDirs, cleanupOldArtifacts, getArtifactsDir } from "..
 import { resolveCurrentSessionId } from "../shared/session-identity.ts";
 import { recordSessionReplacement } from "../shared/session-succession.ts";
 import { getAgentDir } from "../shared/utils.ts";
-import { isStaleExtensionContextError, MODEL_ONLY_TOOL, withCachedUiContext } from "../shared/extension-context.ts";
+import { isStaleExtensionContextError, SCRIPT_ONLY_TOOL, withCachedUiContext } from "../shared/extension-context.ts";
 import { currentCompletionOwnerId } from "../shared/completion-owner.ts";
 import { cleanupOldChainDirs } from "../shared/settings.ts";
 import { clearLegacyResultAnimationTimer, renderSubagentResult, renderSubagentSummary, setInlineWorkflowCoverage } from "../tui/render.ts";
@@ -677,7 +677,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 	const parameters = createSubagentParamsSchema(disabledFeatures);
 	const tool: ToolDefinition<typeof parameters, Details> = {
 		name: "subagent",
-		...MODEL_ONLY_TOOL,
+		...SCRIPT_ONLY_TOOL,
 		label: "Subagent",
 		description: buildSubagentToolDescription(config, { disabledFeatures }),
 		...buildSubagentToolPromptMetadata(config, disabledFeatures),
@@ -740,7 +740,7 @@ export default function registerSubagentExtension(pi: ExtensionAPI): void {
 		if (catalog) event.systemPromptOptions.sections.advertised_subagents = catalog;
 	});
 
-	registerWaitTool(pi, state, waitToolConfig.enabled, waitSubscriptionManager, waitToolConfig.defaultTimeoutMs, undefined, supervisorChannel.hasPendingRequests);
+	registerWaitTool(pi, state, waitToolConfig.enabled, waitSubscriptionManager, waitToolConfig.defaultTimeoutMs, undefined, supervisorChannel.hasPendingRequests, "deferred");
 
 	pi.on("agent_end", async (_event, ctx) => {
 		try {

@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext, ToolDefinition } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { MODEL_ONLY_TOOL } from "../shared/extension-context.ts";
+import { declaresToModel, SCRIPT_ONLY_TOOL, toolExposure } from "../shared/extension-context.ts";
 import type { ToolActivationMode } from "../shared/types.ts";
 import { registerPinnedTool } from "./declaration-pinning.ts";
 import { listBackgroundWorkProviders } from "../api/background-work.ts";
@@ -38,7 +38,9 @@ function setSelection(pi: ExtensionAPI, includeSubagent: boolean, includeLoader:
 	if (includeSubagent) next.push(SUBAGENT_NAME, SUPERVISOR_NAME, PARENT_SUPERVISOR_NAME);
 	if (includeLoader) next.push(LOADER_NAME);
 	if (includeWait) next.push(WAIT_NAME);
-	pi.setActiveTools([...new Set(next)]);
+	// A script-only tool is reachable from codemode whether or not it is active, so naming it here
+	// would only declare it: keep it out of the selection and out of the request.
+	pi.setActiveTools([...new Set(next)].filter((name) => declaresToModel(toolExposure(pi, name))));
 }
 
 // Mirrors pi-ai's per-API transcript handling: without these flags, a mid-conversation tool change
@@ -141,7 +143,7 @@ export function registerSubagentToolActivation(
 	const parameters = Type.Object({});
 	const loader: ToolDefinition<typeof parameters, ActivationDetails> = {
 		name: LOADER_NAME,
-		...MODEL_ONLY_TOOL,
+		...SCRIPT_ONLY_TOOL,
 		label: "Enable Subagents",
 		description: "Enable pi-subagents delegation and management tools without launching work. Call when delegation is authorized by the current request or applicable user/project instructions, or when managing existing runs. Direct execution is the default; complexity alone never authorizes delegation. Full tools are available on the next model request.",
 		promptSnippet: "pi-subagents is installed. For authorized specialist, independent-review, or parallel work, call subagents_enable, then subagent. Authorization must come from the current request or applicable instructions; complexity alone is not authorization.",
@@ -186,7 +188,8 @@ export function registerSubagentToolActivation(
 		// Another extension's background-work provider reports work only bg_wait can wait for, so a session with one
 		// declares bg_wait without enabling subagent, including when the provider registered after session start.
 		const providedWait = available.some((tool) => tool.name === WAIT_NAME) && listBackgroundWorkProviders().length > 0;
-		const names = [...(loaderSelected ? [LOADER_NAME] : []), ...(providedWait ? [WAIT_NAME] : [])];
+		const names = [...(loaderSelected ? [LOADER_NAME] : []), ...(providedWait ? [WAIT_NAME] : [])]
+			.filter((name) => declaresToModel(toolExposure(pi, name)));
 		if (names.length === 0) return;
 		const selectedTools = event.systemPromptOptions.selectedTools ??= [...pi.getActiveTools()];
 		for (const name of names) if (!selectedTools.includes(name)) selectedTools.push(name);
