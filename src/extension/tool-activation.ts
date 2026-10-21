@@ -163,11 +163,21 @@ export function registerSubagentToolActivation(
 					details: { missing: [SUBAGENT_NAME] },
 				};
 			}
-			if (!pi.getActiveTools().includes(SUBAGENT_NAME)) return {
-				isError: true,
-				content: [{ type: "text", text: "Activation failed: subagent." }],
-				details: { missing: [SUBAGENT_NAME] },
-			};
+			if (!pi.getActiveTools().includes(SUBAGENT_NAME)) {
+				// A script-only subagent needs no activation: codemode reaches it while it is inactive.
+				if (!declaresToModel(toolExposure(pi, SUBAGENT_NAME))) {
+					const advertised = await options.advertisedPrompt();
+					return {
+						content: [{ type: "text", text: `subagent is script-only in this session: call it from a codemode script as tools.subagent(...). Nothing to enable.${advertised ? `\n\n${advertised}` : ""}` }],
+						details: { enabled: [SUBAGENT_NAME] },
+					};
+				}
+				return {
+					isError: true,
+					content: [{ type: "text", text: "Activation failed: subagent." }],
+					details: { missing: [SUBAGENT_NAME] },
+				};
+			}
 			const advertised = await options.advertisedPrompt();
 			return {
 				content: [{ type: "text", text: `Enabled: subagent. If your tool list includes subagent (possibly prefixed), call it now. Otherwise, wait for the next user prompt; do not retry now. Start Pi with --exclude-tools subagents_enable to keep subagent always available.${advertised ? `\n\n${advertised}` : ""}` }],
