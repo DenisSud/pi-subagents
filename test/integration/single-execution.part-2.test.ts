@@ -4542,30 +4542,30 @@ if (!fs.existsSync(${JSON.stringify(holdPath)})) { console.log('{}'); } else {
 		assert.equal(runtime?.childIndex, 2);
 	});
 
-	it("fails with actionable diagnostics when a requested extension tool is not loaded", async () => {
-		mockPi.onCall({ output: "Model incorrectly claimed success", missingTools: ["fixture_search"] });
+	it("warns with actionable diagnostics when a requested extension tool is not loaded", async () => {
+		mockPi.onCall({ output: "Model worked without fixture search", missingTools: ["fixture_search"] });
 		const agents = [makeAgent("extension-worker", { tools: ["read", "fixture_search"] })];
 
 		const result = await runSync(tempDir, agents, "extension-worker", "Use fixture search", { runId: "missing-extension-tool" });
 
-		assert.equal(result.exitCode, 1);
-		assert.match(result.error ?? "", /ran as a foreground child, which never loads the parent's ambient extensions, and these child tools were unavailable: fixture_search/);
-		assert.match(result.error ?? "", /require background children \(`async: true`\)/);
-		assert.match(result.error ?? "", /subagentOnlyExtensions/);
-		assert.match(result.error ?? "", /strict allowlist/);
-		assert.doesNotMatch(result.finalOutput ?? "", /Model incorrectly claimed success/);
-		assert.equal(result.messages?.length, 0);
-		assert.equal(result.usage.turns, 0);
+		assert.equal(result.exitCode, 0);
+		assert.equal(result.error, undefined);
+		assert.match(result.finalOutput ?? "", /Model worked without fixture search/);
+		assert.match(result.finalOutput ?? "", /Tool warning: Subagent 'extension-worker' was told to use fixture_search/);
+		assert.match(result.finalOutput ?? "", /A foreground child never loads the parent's ambient extensions/);
+		assert.match(result.finalOutput ?? "", /subagentOnlyExtensions/);
+		assert.match(result.finalOutput ?? "", /strict allowlist/);
 	});
 
-	it("preserves missing child tool failures without inferring mutation intent", async () => {
-		mockPi.onCall({ output: "I cannot edit because fixture_search is missing", missingTools: ["fixture_search"] });
+	it("keeps a completed child complete when a requested tool was missing", async () => {
+		mockPi.onCall({ output: "I edited what I could without fixture_search", missingTools: ["fixture_search"] });
 		const agents = [makeAgent("worker", { tools: ["read", "fixture_search"] })];
 
 		const result = await runSync(tempDir, agents, "worker", "Implement the requested source fix", { runId: "missing-implementation-tool" });
 
-		assert.equal(result.exitCode, 1);
-		assert.match(result.error ?? "", /these child tools were unavailable: fixture_search/);
+		assert.equal(result.exitCode, 0);
+		assert.equal(result.error, undefined);
+		assert.match(result.finalOutput ?? "", /Tool warning: Subagent 'worker' was told to use fixture_search/);
 		assert.equal(result.effects?.fileMutation, undefined);
 	});
 
