@@ -7,31 +7,25 @@ export interface ChildToolDiagnostic {
 }
 
 /**
- * Explain missing child tools. Foreground children run inside the parent
- * process and never load the parent's ambient extensions, so tools an ambient
- * extension registers (MCP tools, provider tools) only exist for background
- * children; the diagnostic says so instead of reporting a generic gap.
+ * Explain missing child tools. A name in `tools` that no loaded provider
+ * registers is skipped, not fatal: the child runs with the tools it has, and
+ * the parent gets one line saying which ones went missing and how to load them.
+ * Foreground children never load the parent's ambient extensions, so tools an
+ * ambient extension registers (MCP tools, provider tools) only exist for
+ * background children; the warning says so instead of reporting a generic gap.
  */
-export function formatChildToolDiagnostic(diagnostic: ChildToolDiagnostic, options: { host?: "parent" | "runner" } = {}): string {
-	const subject = diagnostic.agent ? `Agent '${diagnostic.agent}'` : "Subagent";
-	if (options.host === "parent") {
-		return [
-			`${subject} ran as a foreground child, which never loads the parent's ambient extensions, and these child tools were unavailable: ${diagnostic.missing.join(", ")}.`,
-			"The `tools` field is a strict allowlist; it does not load extension code.",
-			...(diagnostic.missingMcpDirectTools?.length
-				? [`MCP direct tools missing from the child registry: ${diagnostic.missingMcpDirectTools.join(", ")}.`]
-				: []),
-			"MCP tools require background children (`async: true`) because only they load ambient extensions.",
-			"For extension tools a foreground child can load, add the provider path to `subagentOnlyExtensions` (child-only), `extensions`, or as a path-like entry in `tools`, while keeping each registered tool name in `tools`.",
-		].join("\n");
-	}
-	return [
-		`${subject} requested unavailable child tools: ${diagnostic.missing.join(", ")}.`,
+export function formatChildToolWarning(diagnostic: ChildToolDiagnostic, options: { host?: "parent" | "runner" } = {}): string {
+	const subject = diagnostic.agent ? `Subagent '${diagnostic.agent}'` : "Subagent";
+	const lines = [
+		`Tool warning: ${subject} was told to use ${diagnostic.missing.join(", ")}, which no loaded provider registered. The child ran without ${diagnostic.missing.length === 1 ? "it" : "them"}.`,
 		"The `tools` field is a strict allowlist; it does not load extension code.",
-		...(diagnostic.missingMcpDirectTools?.length
-			? [`Resolved MCP direct tools missing from the child registry: ${diagnostic.missingMcpDirectTools.join(", ")}. Resolved names must match what the host or pi-mcp-adapter registers; check the MCP direct-tool registration before treating this as a tool-call failure.`]
-			: []),
-		"For extension tools, add the provider path to `subagentOnlyExtensions` (child-only), `extensions`, or as a path-like entry in `tools`, while keeping each registered tool name in `tools`.",
-		"For MCP tools, verify the MCP adapter configuration and selected tool names. For builtin tools, verify the name against the installed Pi version.",
-	].join("\n");
+	];
+	if (diagnostic.missingMcpDirectTools?.length) {
+		lines.push(`MCP direct tools missing from the child registry: ${diagnostic.missingMcpDirectTools.join(", ")}.`);
+	}
+	if (options.host === "parent") {
+		lines.push("A foreground child never loads the parent's ambient extensions: list the provider in `subagentOnlyExtensions` or `extensions`, or run the child with `async: true` so it loads them.");
+	}
+	lines.push("For extension tools, add the provider path to `subagentOnlyExtensions`, `extensions`, or as a path-like entry in `tools`, while keeping each registered tool name in `tools`. For MCP tools, check the adapter configuration and the selected names.");
+	return lines.join("\n");
 }

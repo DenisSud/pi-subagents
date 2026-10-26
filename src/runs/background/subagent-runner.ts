@@ -91,7 +91,7 @@ import { alignForkedSessionCwd } from "../../shared/fork-session-cwd.ts";
 import { outputEntryFromAsyncResult, resolveOutputReferences } from "../shared/chain-outputs.ts";
 import { clearStructuredOutputCaptures, createStructuredOutputFileCapture, createStructuredOutputRuntime, formatStructuredOutputRejectionError, MISSING_STRUCTURED_OUTPUT_CALL_ERROR, readStructuredOutput, readStructuredOutputAcceptanceReport } from "../shared/structured-output.ts";
 import { formatMidToolExitError, isOrdinaryToolForMidToolExit, isUnexplainedProcessSignal } from "../shared/process-signal.ts";
-import { formatChildToolDiagnostic } from "../shared/tool-availability.ts";
+import { formatChildToolWarning } from "../shared/tool-availability.ts";
 import { buildTimeoutRecoverySummary, collectTrackedMutationEvidence, snapshotTrackedMutations } from "../shared/mutation-evidence.ts";
 import { collectDynamicResults, DynamicFanoutError, materializeDynamicParallelStep, validateDynamicCollection } from "../shared/dynamic-fanout.ts";
 import { claimRunFanoutBatch, getRunFanoutBudgetSnapshot } from "../shared/run-fanout-budget.ts";
@@ -1087,6 +1087,7 @@ export async function runSingleStepInner(
 	let actualLaunchContractDigest = step.launchContractDigest;
 	const mutationSnapshot = step.machine ? { source: "tracked-files" as const, trackedOnly: true as const, cwd: step.cwd ?? ctx.cwd, dirtyFiles: [], fingerprints: {}, unavailable: "Local Git evidence is not authoritative for a pane-native remote run." } : snapshotTrackedMutations(step.cwd ?? ctx.cwd);
 	let finalMutationEvidence = collectTrackedMutationEvidence(mutationSnapshot, step.cwd ?? ctx.cwd);
+	let toolNotice: string | undefined;
 
 	let contextOverflow = false;
 	let launchWarningsEmitted = false;
@@ -1241,15 +1242,16 @@ export async function runSingleStepInner(
 		// A parked run still owes output diagnostics when it actually finishes.
 		// Stopped/timedOut runs already have terminal failures, so terminal output diagnostics are deferred.
 		const terminalDiagnosticsEligible = !run.interrupted && !run.stopped && !run.timedOut;
-		const toolDiagnostic = run.exitCode === 0 && !run.error ? launch.capture.toolDiagnostic() : undefined;
-		const toolAvailabilityError = toolDiagnostic ? formatChildToolDiagnostic(toolDiagnostic) : undefined;
+		// A missing tool is a warning on a run that otherwise succeeded: the child
+		// already ran with the tools it had, so it must not be reclassified as failed.
+		const toolDiagnostic = terminalDiagnosticsEligible ? launch.capture.toolDiagnostic() : undefined;
+		toolNotice = toolDiagnostic ? formatChildToolWarning(toolDiagnostic) : undefined;
 		const runtimeAcknowledgedExtensions = launch.capture.runtimeAcknowledgedExtensions();
 		const midToolExitError = run.currentTool
 			&& isOrdinaryToolForMidToolExit(run.currentTool)
 			&& !run.interrupted
 			&& !run.timedOut
 			&& !run.stopped
-			&& !toolAvailabilityError
 			? formatMidToolExitError({ toolName: run.currentTool })
 			: undefined;
 
@@ -1257,7 +1259,7 @@ export async function runSingleStepInner(
 		let structuredError: string | undefined;
 		let validatedStructuredOutput = false;
 		if (effectiveStructuredOutput) {
-			const otherwiseSuccessful = terminalDiagnosticsEligible && run.exitCode === 0 && !run.error && !toolAvailabilityError && !midToolExitError;
+			const otherwiseSuccessful = terminalDiagnosticsEligible && run.exitCode === 0 && !run.error && !midToolExitError;
 			if (!run.structuredOutputToolInvoked && otherwiseSuccessful) {
 				structuredError = MISSING_STRUCTURED_OUTPUT_CALL_ERROR;
 			} else if (run.structuredOutputToolInvoked) {
@@ -1285,7 +1287,7 @@ export async function runSingleStepInner(
 		const errorMessages = validatedStructuredOutput
 			? run.messages.slice(run.structuredOutputMessageStartIndex ?? run.messages.length)
 			: run.messages;
-		const hiddenError = terminalDiagnosticsEligible && run.exitCode === 0 && !run.error && !toolAvailabilityError && !structuredError && !midToolExitError
+		const hiddenError = terminalDiagnosticsEligible && run.exitCode === 0 && !run.error && !structuredError && !midToolExitError
 			? detectSubagentError(errorMessages)
 			: null;
 		const terminalEmptyAfterUsefulWork = !validatedStructuredOutput
@@ -1293,7 +1295,6 @@ export async function runSingleStepInner(
 			&& (run.toolCount > 0 || Boolean(run.finalOutput.trim()));
 		const emptyOutputError = terminalDiagnosticsEligible && run.exitCode === 0
 			&& !run.error
-			&& !toolAvailabilityError
 			&& !structuredError
 			&& !validatedStructuredOutput
 			&& (!run.finalOutput.trim() || terminalEmptyAfterUsefulWork)
@@ -1317,15 +1318,14 @@ export async function runSingleStepInner(
 		finalRequiredOutputMissing = requiredOutput?.missing;
 		const missingRequiredOutputError = terminalDiagnosticsEligible ? formatRequiredOutputError(requiredOutput) : undefined;
 		const missingRequiredOutputAfterMutation = Boolean(missingRequiredOutputError) && (mutationAttemptObserved || Boolean(mutationEvidence.changedFiles.length));
-		const effectiveExitCode = toolAvailabilityError || midToolExitError || structuredError || emptyOutputError || missingRequiredOutputError
+		const effectiveExitCode = midToolExitError || structuredError || emptyOutputError || missingRequiredOutputError
 			? 1
 			: hiddenError?.hasError
 				? (hiddenError.exitCode ?? 1)
 				: run.error && run.exitCode === 0
 					? 1
 					: run.exitCode;
-		const underlyingError = toolAvailabilityError
-			?? midToolExitError
+		const underlyingError = midToolExitError
 			?? structuredError
 			?? run.error
 			?? emptyOutputError
@@ -1441,6 +1441,7 @@ export async function runSingleStepInner(
 		saveError: resolvedOutput.saveError,
 	}));
 	outputForSummary = finalizedOutput.displayOutput;
+	if (toolNotice) outputForSummary = outputForSummary.trim() ? `${outputForSummary}\n\n${toolNotice}` : toolNotice;
 	const acceptance = step.effectiveAcceptance && !finalResult?.stopped && !ctx.timeoutSignal?.aborted && !ctx.stopSignal?.aborted && !ctx.skipAcceptance?.()
 		? await evaluateAcceptance(omitUndefinedProperties({
 			acceptance: step.effectiveAcceptance,

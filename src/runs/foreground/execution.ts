@@ -67,7 +67,7 @@ import { qualifyModelWithProvider, resolveEffectiveThinking } from "../../shared
 import { assertThinkingWithinCeiling, intersectThinkingCeilings } from "../../shared/thinking-ceiling.ts";
 import { formatStructuredOutputRejectionError, MISSING_STRUCTURED_ACCEPTANCE_REPORT_ERROR, MISSING_STRUCTURED_OUTPUT_CALL_ERROR } from "../shared/structured-output.ts";
 import { formatMidToolExitError, isOrdinaryToolForMidToolExit } from "../shared/process-signal.ts";
-import { formatChildToolDiagnostic } from "../shared/tool-availability.ts";
+import { formatChildToolWarning } from "../shared/tool-availability.ts";
 import { formatChildModelResolutionDiagnostic, formatInheritedProviderDiagnostic, isChildModelResolutionFailure } from "../shared/model-resolution-diagnostic.ts";
 import { planAbortRecovery } from "../shared/abort-recovery.ts";
 import { buildTimeoutRecoverySummary, collectTrackedMutationEvidence, snapshotTrackedMutations } from "../shared/mutation-evidence.ts";
@@ -545,7 +545,7 @@ async function runSingleAttempt(
 	const mutationSnapshot = options.machine ? { source: "tracked-files" as const, trackedOnly: true as const, cwd: options.cwd ?? runtimeCwd, dirtyFiles: [], fingerprints: {}, unavailable: "Local Git evidence is not authoritative for a pane-native remote run." } : snapshotTrackedMutations(options.cwd ?? runtimeCwd);
 	let structuredOutputToolInvoked = false;
 	let structuredOutputMessageStartIndex: number | undefined;
-	let toolAvailabilityError: string | undefined;
+	let toolNotice: string | undefined;
 	let abortedBySignal = options.signal?.aborted === true;
 	let afterCompactionSettlement = false;
 
@@ -1008,20 +1008,6 @@ async function runSingleAttempt(
 				compactionStartedReceived = false;
 				afterCompactionSettlement = false;
 			}
-			if (evt.type === "agent_start") {
-				const diagnostic = capture.toolDiagnostic();
-				if (diagnostic) {
-					const message = formatChildToolDiagnostic(diagnostic, { host: "parent" });
-					toolAvailabilityError = message;
-					result.error = message;
-					result.finalOutput = message;
-					progress.status = "failed";
-					progress.error = message;
-					fireUpdate();
-					abortChild();
-					return;
-				}
-			}
 			const lifecycleAction = projectChildLifecycle(evt, false, childLifecycleState);
 			if (evt.type === "agent_settled" && lifecycleAction === "start-drain") {
 				agentSettledReceived = true;
@@ -1308,11 +1294,10 @@ async function runSingleAttempt(
 			sessionSettled = true;
 			clearFinalDrainTimers();
 			const diagnostic = capture.toolDiagnostic();
-			const toolDiagnosticError = diagnostic ? formatChildToolDiagnostic(diagnostic, { host: "parent" }) : undefined;
-			toolAvailabilityError = toolDiagnosticError;
+			toolNotice = diagnostic ? formatChildToolWarning(diagnostic, { host: "parent" }) : undefined;
 			result.runtimeAcknowledgedExtensions = capture.runtimeAcknowledgedExtensions();
 			if (session?.machineEvidence) result.nativeMachine = { provider: "herdr", machineId: session.machineEvidence.machineId, ...(session.machineEvidence.initial ? { initialGit: session.machineEvidence.initial } : {}), ...(session.machineEvidence.final ? { finalGit: session.machineEvidence.final } : {}) };
-			let closeError = result.error ?? toolDiagnosticError ?? assistantError;
+			let closeError = result.error ?? assistantError;
 			const promptErrorMessage = promptError === undefined ? undefined : promptError instanceof Error ? promptError.message : String(promptError);
 			if (promptError !== undefined) childPromptFailed = true;
 			if (!closeError && promptErrorMessage !== undefined) {
@@ -1480,8 +1465,7 @@ async function runSingleAttempt(
 		&& isOrdinaryToolForMidToolExit(progress.currentTool)
 		&& !abortedBySignal
 		&& !result.timedOut
-		&& !result.stopped
-		&& !toolAvailabilityError) {
+		&& !result.stopped) {
 		result.exitCode = 1;
 		result.error = formatMidToolExitError({ toolName: progress.currentTool });
 	}
@@ -1610,6 +1594,7 @@ async function runSingleAttempt(
 				if (result.outputState === "absent") result.outputState = "unknown";
 			}
 	}
+	if (toolNotice) fullOutput = fullOutput.trim() ? `${fullOutput}\n\n${toolNotice}` : toolNotice;
 		artifactOutputByResult.set(result, fullOutput);
 		acceptanceOutputByResult.set(result, acceptanceOutput);
 	result.outputMode = options.outputMode ?? "inline";

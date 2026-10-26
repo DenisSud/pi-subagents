@@ -9,7 +9,6 @@ import type { SteerRequest } from "../background/control-channel.ts";
 import { RUNTIME_EXTENSION_ACK_EVENT, isRuntimeAcknowledgedExtensionId } from "./runtime-acknowledged-extensions.ts";
 import { createStructuredOutputToolParameters, MISSING_STRUCTURED_ACCEPTANCE_REPORT_ERROR, validateStructuredOutputValue } from "./structured-output.ts";
 import { validateAcceptanceReport } from "./acceptance.ts";
-import { formatChildToolDiagnostic } from "./tool-availability.ts";
 import { shouldBlockToolForBudget, toolBudgetBlockedMessage, toolBudgetSoftNudge } from "./tool-budget.ts";
 import type { ResolvedToolBudget, SubagentState } from "../../shared/types.ts";
 import { INTERCOM_SESSION_IDENTITY_EVENT } from "../../shared/types.ts";
@@ -682,9 +681,12 @@ export default function registerSubagentPromptRuntime(pi: ExtensionAPI, config?:
 	});
 	onRuntimeEvent("agent_start", () => {
 		if (!config.requiredTools) return;
+		// A name in `tools` that no loaded provider registers is a launch warning,
+		// not a failure: the child works with the tools it has and the parent
+		// reports which ones were missing. Throwing here would end a run that has
+		// already done its work, or abort one before it starts, depending on host.
 		const diagnostic = evaluateChildToolDiagnostic(config, pi.getAllTools().map((tool) => tool.name));
 		config.toolDiagnostic?.(diagnostic);
-		if (diagnostic) throw new Error(formatChildToolDiagnostic(diagnostic));
 	});
 	onRuntimeEvent("agent_end", async (_event: unknown, ctx: unknown) => {
 		if ((ctx as { hasUI?: boolean } | undefined)?.hasUI === true) drainObservation?.deny();

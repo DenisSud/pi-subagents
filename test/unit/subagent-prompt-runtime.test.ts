@@ -10,7 +10,7 @@ import { createEventBus } from "../support/helpers.ts";
 import { RUNTIME_EXTENSION_ACK_EVENT } from "../../src/runs/shared/runtime-acknowledged-extensions.ts";
 import { clearStructuredOutputCaptures } from "../../src/runs/shared/structured-output.ts";
 import { getAgentDir } from "../../src/shared/utils.ts";
-import { formatChildToolDiagnostic, type ChildToolDiagnostic } from "../../src/runs/shared/tool-availability.ts";
+import { formatChildToolWarning, type ChildToolDiagnostic } from "../../src/runs/shared/tool-availability.ts";
 import type { ChildRuntimeConfig } from "../../src/runs/shared/child-runtime-config.ts";
 import type { ChildWatchdogConfig } from "../../src/watchdog/child-status.ts";
 import { SUBAGENT_WATCHDOG_WARNING_TYPE } from "../../src/watchdog/types.ts";
@@ -347,7 +347,7 @@ describe("subagent prompt runtime", () => {
 			registerTool: (tool: { name: string }) => outsideTools.set(tool.name, tool),
 			getAllTools: () => [...outsideTools.keys()].map((name) => ({ name })),
 		} as never, childConfig({ cwd: outside, requiredTools: ["watchdog_diff", "fixture_search"] }));
-		assert.throws(() => missingHandlers.get("agent_start")?.({}), /requested unavailable child tools: fixture_search/);
+		assert.doesNotThrow(() => missingHandlers.get("agent_start")?.({}), "a missing tool warns instead of failing the child");
 	});
 
 	it("registers no permission hook by default and routes ask only to the watchdog arbiter", async () => {
@@ -974,7 +974,7 @@ describe("subagent prompt runtime", () => {
 
 			handlers.get("session_start")?.({});
 			assert.deepEqual(registered, ["bg_wait", "contact_supervisor"]);
-			assert.throws(() => handlers.get("agent_start")?.({}), /requested unavailable child tools: read, grep, find, ls, bash, edit, write, intercom/);
+			assert.doesNotThrow(() => handlers.get("agent_start")?.({}), "a missing tool warns instead of failing the child");
 			assert.deepEqual(diagnostics, [{
 				agent: "scout",
 				required: ["read", "grep", "find", "ls", "bash", "edit", "write", "intercom"],
@@ -1001,7 +1001,7 @@ describe("subagent prompt runtime", () => {
 				toolDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
 			}));
 
-			assert.throws(() => handlers.get("agent_start")?.({}), /requested unavailable child tools: bash, edit, write/);
+			assert.doesNotThrow(() => handlers.get("agent_start")?.({}), "a missing tool warns instead of failing the child");
 			assert.deepEqual(diagnostics, [{
 				agent: "worker",
 				required: ["read", "grep", "find", "ls", "bash", "edit", "write"],
@@ -1074,9 +1074,9 @@ describe("subagent prompt runtime", () => {
 
 			const promptRewrite = await handlers.get("before_agent_start")?.({ systemPrompt: BASE_PROMPT }) as { systemPrompt?: string } | undefined;
 			assert.deepEqual(diagnostics, []);
-			assert.doesNotMatch(promptRewrite?.systemPrompt ?? "", /requested unavailable child tools/);
+			assert.doesNotMatch(promptRewrite?.systemPrompt ?? "", /Tool warning:/);
 
-			assert.throws(() => handlers.get("agent_start")?.({}), /requested unavailable child tools: fixture_search/);
+			assert.doesNotThrow(() => handlers.get("agent_start")?.({}), "a missing tool warns instead of failing the child");
 			assert.deepEqual(diagnostics, [{
 				agent: "extension-worker",
 				required: ["read", "fixture_search"],
@@ -1108,7 +1108,7 @@ describe("subagent prompt runtime", () => {
 				toolDiagnostic: (diagnostic) => diagnostics.push(diagnostic),
 			}));
 
-			assert.throws(() => handlers.get("agent_start")?.({}), /requested unavailable child tools: rust_symbols_workspace_symbols, fixture_search/);
+			assert.doesNotThrow(() => handlers.get("agent_start")?.({}), "a missing tool warns instead of failing the child");
 			const diagnostic = diagnostics[0];
 			assert.deepEqual(diagnostic, {
 				agent: "worker",
@@ -1117,8 +1117,8 @@ describe("subagent prompt runtime", () => {
 				missing: ["rust_symbols_workspace_symbols", "fixture_search"],
 				missingMcpDirectTools: ["rust_symbols_workspace_symbols"],
 			});
-			assert.match(formatChildToolDiagnostic(diagnostic!), /must match what the host or pi-mcp-adapter registers/);
-			assert.match(formatChildToolDiagnostic(diagnostic!), /fixture_search/);
+			assert.match(formatChildToolWarning(diagnostic!), /MCP direct tools missing from the child registry: rust_symbols_workspace_symbols/);
+			assert.match(formatChildToolWarning(diagnostic!), /fixture_search/);
 		}
 	});
 

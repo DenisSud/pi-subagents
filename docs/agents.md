@@ -215,7 +215,7 @@ The `researcher` and `evidence-auditor` builtins use `web_search`, `fetch_conten
 pi install npm:pi-web-access
 ```
 
-The provider must be loaded in the child and register all four tools, including `source_check`, before launch; a missing required tool prevents a successful run. Foreground children do not load ambient parent extensions: configure `extensions` or `subagentOnlyExtensions` explicitly, or use background extension discovery as described in [Tool and extension selection](#tool-and-extension-selection). For `researcher`, fetched-source inspection is a fallback for a registered `source_check` call failing, not for missing registration.
+The provider must be loaded in the child and register all four tools, including `source_check`, before launch; a tool that no loaded provider registers is skipped with a warning on the child's result, so the child never fails a run that finished. Foreground children do not load ambient parent extensions: configure `extensions` or `subagentOnlyExtensions` explicitly, or use background extension discovery as described in [Tool and extension selection](#tool-and-extension-selection). For `researcher`, fetched-source inspection is a fallback for a registered `source_check` call failing, not for missing registration.
 
 ## Overriding builtins and custom agents
 
@@ -563,7 +563,7 @@ Use `subagentOnlyExtensions` when a custom extension tool should exist only insi
 
 To apply a shared extension policy to every agent that does not declare its own, set `subagents.defaultExtensions` for an ambient-disabling allowlist or `subagents.defaultSubagentOnlyExtensions` for child-only paths that preserve ambient discovery (see [configuration.md](configuration.md)).
 
-Before the first model turn, the child runtime compares every explicit tool name with Pi's final filtered registry. A missing provider fails the run with the unavailable names and concrete `subagentOnlyExtensions`/`extensions` guidance, instead of letting a direct or chained child silently continue without its requested tools.
+Before the first model turn, the child runtime compares every explicit tool name with Pi's final filtered registry. A missing provider does not fail the run: the child continues with the tools it has, and its result carries a warning naming the missing tools plus the concrete `subagentOnlyExtensions`/`extensions` guidance. A name in `tools` is a request, not a guarantee; the warning is how the parent learns it was not honored.
 
 ## Skills
 

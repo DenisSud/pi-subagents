@@ -1193,7 +1193,7 @@ syncBuiltinESMExports();
 		assert.deepEqual(readMockPiRequiredTools(mockPi, 1), tools);
 	});
 
-	it("fails background chains when requested extension tools are unavailable", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+	it("warns instead of failing a background chain when requested extension tools are unavailable", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({ output: "Model incorrectly claimed success", missingTools: ["fixture_search"] });
 		const id = `async-missing-extension-tool-${Date.now().toString(36)}`;
 
@@ -1208,13 +1208,15 @@ syncBuiltinESMExports();
 
 		const resultPath = await waitForAsyncResultFile(id, 10_000);
 		const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
-		assert.equal(payload.success, false);
-		assert.equal(payload.state, "failed");
-		assert.match(payload.results[0]?.error ?? "", /requested unavailable child tools: fixture_search/);
-		assert.match(payload.results[0]?.error ?? "", /subagentOnlyExtensions/);
+		assert.equal(payload.success, true);
+		assert.equal(payload.state, "complete");
+		assert.equal(payload.results[0]?.error, undefined);
+		assert.match(payload.results[0]?.output ?? "", /Model incorrectly claimed success/);
+		assert.match(payload.results[0]?.output ?? "", /Tool warning: Subagent 'extension-worker' was told to use fixture_search/);
+		assert.match(payload.results[0]?.output ?? "", /subagentOnlyExtensions/);
 	});
 
-	it("preserves missing background child-tool failures without mutation inference", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
+	it("keeps a completed background child complete when a requested tool was missing", { skip: !isAsyncAvailable() ? "jiti not available" : undefined }, async () => {
 		mockPi.onCall({ output: "I cannot edit because fixture_search is missing", missingTools: ["fixture_search"] });
 		const id = `async-missing-implementation-tool-${Date.now().toString(36)}`;
 
@@ -1232,11 +1234,12 @@ syncBuiltinESMExports();
 
 		const resultPath = await waitForAsyncResultFile(id, 10_000);
 		const payload = JSON.parse(fs.readFileSync(resultPath, "utf-8")) as AsyncResultPayload;
-		const statusPayload = await waitForAsyncState(id, (candidate) => candidate.state === "failed");
+		const statusPayload = await waitForAsyncState(id, (candidate) => candidate.state === "complete");
 
-		assert.equal(payload.success, false);
-		assert.equal(payload.state, "failed");
-		assert.match(payload.results[0]?.error ?? "", /requested unavailable child tools: fixture_search/);
+		assert.equal(payload.success, true);
+		assert.equal(payload.state, "complete");
+		assert.equal(payload.results[0]?.error, undefined);
+		assert.match(payload.results[0]?.output ?? "", /Tool warning: Subagent 'worker' was told to use fixture_search/);
 		assert.equal(payload.results[0]?.effects?.fileMutation, undefined);
 		assert.equal(statusPayload.steps?.[0]?.effects?.fileMutation, undefined);
 	});

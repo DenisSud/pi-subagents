@@ -5,7 +5,7 @@ import os from "node:os";
 import path from "node:path";
 import { describe, it } from "node:test";
 import { Worker } from "node:worker_threads";
-import { formatChildToolDiagnostic } from "../../src/runs/shared/tool-availability.ts";
+import { formatChildToolWarning } from "../../src/runs/shared/tool-availability.ts";
 import { formatWorkflowJsonPreview, previewSimpleWorkflowRun, runWorkflowScript, validateWorkflowScript, WorkflowScriptError, type WorkflowScriptChildResult } from "../../src/workflows/scripted-workflow.ts";
 import { workflowChildSummary } from "../../src/workflows/workflow-child-summary.ts";
 import { preflightWorkflowWorktrees } from "../../src/runs/foreground/subagent-executor.ts";
@@ -975,12 +975,12 @@ describe("scripted workflow runtime", () => {
 		assert.equal(launches, 0);
 	});
 
-	it("classifies a review lane whose child registry lacks repository tools as failed, not completed", async () => {
+	it("classifies a review lane whose launch rejects as failed, not completed", async () => {
 		await assert.rejects(
 			runWorkflowScript({
 				script: `return await runs.run("review", { agent: "reviewer", task: "Review the diff" });`,
 				async launch() {
-					throw new Error(formatChildToolDiagnostic({
+					throw new Error(formatChildToolWarning({
 						agent: "reviewer",
 						required: ["read", "grep", "find", "ls"],
 						available: ["contact_supervisor"],
@@ -991,9 +991,9 @@ describe("scripted workflow runtime", () => {
 			}),
 			(error: unknown) => {
 				assert.ok(error instanceof WorkflowScriptError);
-				assert.match(error.message, /Run 'review' failed: Agent 'reviewer' requested unavailable child tools: read, grep, find, ls\./);
+				assert.match(error.message, /Run 'review' failed: Tool warning: Subagent 'reviewer' was told to use read, grep, find, ls/);
 				assert.equal(error.partial.children[0]?.ok, false);
-				assert.match(error.partial.children[0]?.error ?? "", /requested unavailable child tools/);
+				assert.match(error.partial.children[0]?.error ?? "", /Tool warning/);
 				assert.equal(error.partial.trace.find((entry) => entry.key === "review" && entry.state === "failed")?.state, "failed");
 				const summary = workflowChildSummary({
 					parentToolCallId: "tool-call",
