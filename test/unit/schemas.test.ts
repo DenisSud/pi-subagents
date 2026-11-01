@@ -568,6 +568,10 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(hasAnyOfArrayWithStringItems(toolsSchema), true);
 		assert.equal(hasAnyOfType(toolsSchema, "string"), true);
 
+		const optionTools = (schemas.SubagentOptionParams as { properties?: Record<string, JsonSchemaNode> }).properties?.tools;
+		assert.ok(optionTools, "tools should be accepted inside options");
+		assert.equal(hasAnyOfArrayWithStringItems(optionTools), true);
+
 		const outputSchema = SubagentParams?.properties?.output;
 		assert.ok(outputSchema, "output schema should exist");
 		assert.equal(outputSchema.type, undefined);
