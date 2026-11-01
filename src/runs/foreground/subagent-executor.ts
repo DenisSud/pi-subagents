@@ -48,6 +48,17 @@ import {
 	type SequentialStep,
 } from "../../shared/settings.ts";
 import { normalizeSkillInput } from "../../agents/skills.ts";
+
+function normalizeToolInput(input: unknown): string[] | undefined {
+	if (input === undefined) return undefined;
+	if (typeof input === "string") {
+		return [...new Set(input.split(",").map((value) => value.trim()).filter(Boolean))];
+	}
+	if (!Array.isArray(input) || !input.every((value) => typeof value === "string")) {
+		throw new Error("tools must be a comma-separated string or an array of tool names.");
+	}
+	return [...new Set(input.map((value) => value.trim()).filter(Boolean))];
+}
 import { buildAsyncRunnerSteps, DEFAULT_ASYNC_TIMEOUT_MS, executeAsyncChain, executeAsyncSingle, formatAsyncStartedMessage, isAsyncAvailable, workflowAwaitedAsyncResultPath } from "../background/async-execution.ts";
 import { updateActiveRunIndex } from "../background/active-run-index.ts";
 import { steeringReceipt } from "../background/steering.ts";
@@ -400,6 +411,7 @@ export interface SubagentParamsLike {
 	target?: string;
 	focus?: boolean;
 	skill?: string | string[] | boolean;
+	tools?: string[] | string;
 	output?: string | boolean;
 	/** Internal-only; not part of the public tool schema. Wired for single-run reads (chain steps use their own field). */
 	reads?: string[] | false;
@@ -3655,6 +3667,7 @@ async function runAsyncPath(data: ExecutionContextData, deps: ExecutorDeps): Pro
 			sessionFile: sessionFileForTask(params.agent!, 0, modelOverride, modelOverrideFromParent, modelOrigin),
 			context: contextPolicy.contextForAgent(params.agent!),
 			skills,
+			tools: normalizeToolInput(params.tools),
 			output: effectiveOutput,
 			outputMode: effectiveOutputMode,
 			outputClaimPath: params.workflowOutputClaimPath,
@@ -4172,6 +4185,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 	const launchRuleError = applyWatchdogLaunchRules({ cwd: effectiveCwd, agent: agentConfig.name, model: modelOverride ?? (parentModel && `${parentModel.provider}/${parentModel.id}`), warn: (violation) => deps.watchdog?.displayRuleWarning(violation) });
 	if (launchRuleError) return toExecutionErrorResult(params, new Error(launchRuleError), data.contextPolicy.contextSummary);
 	let skillOverride: string[] | false | undefined = normalizeSkillInput(params.skill);
+	let toolsOverride: string[] | undefined = normalizeToolInput(params.tools);
 	let readsOverride: string[] | false | undefined = params.reads;
 	const rawOutput = params.output !== undefined ? params.output : agentConfig.output;
 	let effectiveOutput = normalizeSingleOutputOverride(rawOutput, agentConfig.output);
@@ -4400,6 +4414,7 @@ async function runSinglePath(data: ExecutionContextData, deps: ExecutorDeps): Pr
 			preferredModelProvider: currentProvider,
 			modelScope: modelScopes,
 			skills: effectiveSkills,
+			tools: toolsOverride,
 			structuredOutput: structuredRuntime,
 			agentContract: params.agentContract,
 			acceptance: params.acceptance,

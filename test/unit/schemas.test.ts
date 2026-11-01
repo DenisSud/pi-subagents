@@ -562,6 +562,12 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		assert.equal(hasAnyOfType(skillSchema, "boolean"), true);
 		assert.equal(hasAnyOfType(skillSchema, "string"), true);
 
+		const toolsSchema = SubagentParams?.properties?.tools;
+		assert.ok(toolsSchema, "tools schema should exist");
+		assert.equal(toolsSchema.type, undefined);
+		assert.equal(hasAnyOfArrayWithStringItems(toolsSchema), true);
+		assert.equal(hasAnyOfType(toolsSchema, "string"), true);
+
 		const outputSchema = SubagentParams?.properties?.output;
 		assert.ok(outputSchema, "output schema should exist");
 		assert.equal(outputSchema.type, undefined);
@@ -616,6 +622,8 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 		}
 		const validValues = [
 			{ skill: "review" },
+			{ tools: ["read", "bash"] },
+			{ tools: "read, bash" },
 			{ workflow: true },
 			{ workflow: "workflows/review.js" },
 			{ skill: false },
@@ -633,6 +641,8 @@ describe("SubagentParams schema", { skip: !schemasAvailable ? "typebox not avail
 			{ workflow: 123 },
 			{ skill: 123 },
 			{ skill: [123] },
+			{ tools: 123 },
+			{ tools: [123] },
 			{ output: 123 },
 			{ timeoutMs: 0 },
 			{ maxRuntimeMs: -1 },

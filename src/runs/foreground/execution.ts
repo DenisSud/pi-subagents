@@ -397,7 +397,7 @@ async function runSingleAttempt(
 		inheritGlobalContext: agent.inheritGlobalContext,
 		inheritSkills: agent.inheritSkills,
 		requireReadTool: Boolean(shared.resolvedSkillNames?.length),
-		tools: agent.tools,
+		tools: options.tools ?? agent.tools,
 		excludeTools: agent.excludeTools,
 		allowNestedSubagents: agent.allowNestedSubagents,
 		descendantAllowedAgents: agent.allowedAgents,

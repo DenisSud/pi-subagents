@@ -286,6 +286,7 @@ interface AsyncSingleParams {
 	revivalLease?: SessionLeaseRequest;
 	context?: ContextMode;
 	skills?: string[];
+	tools?: string[];
 	output?: string | boolean;
 	reads?: string[] | false;
 	outputMode?: "inline" | "file-only";
@@ -1928,6 +1929,7 @@ export function executeAsyncSingle(
 		: machine?.cwd ?? runnerCwd;
 	const readExistenceCwd = params.worktree === true ? runnerCwd : instructionCwd;
 	const skillNames = params.skills ?? agentConfig.skills ?? [];
+	const effectiveTools = params.tools ?? agentConfig.tools;
 	const availableModels = params.availableModels;
 	const { resolved: resolvedSkills, missing: missingSkills } = resolveSkillsWithFallback(
 		skillNames,
@@ -2073,7 +2075,7 @@ export function executeAsyncSingle(
 	}
 	const requiredExtensions = externalRunner ? [] : params.requiredExtensions ?? ctx.childRuntime?.requiredExtensions ?? registeredExtensions;
 	const toolPlan = resolvePiLaunchToolPlan({
-		tools: agentConfig.tools,
+		tools: effectiveTools,
 		excludeTools: agentConfig.excludeTools,
 		allowNestedSubagents: agentConfig.allowNestedSubagents,
 		extensions: agentConfig.extensions,
@@ -2139,7 +2141,7 @@ export function executeAsyncSingle(
 		modelOrigin,
 		...(effectiveThinking ? { thinking: resolveEffectiveThinking(selectedModel, effectiveThinking) } : {}),
 		...(thinkingCeiling ? { thinkingCeiling } : {}),
-		...(recoveryAgentConfig.tools ? { tools: [...recoveryAgentConfig.tools] } : {}),
+		...(effectiveTools ? { tools: [...effectiveTools] } : {}),
 		...(recoveryAgentConfig.excludeTools ? { excludeTools: [...recoveryAgentConfig.excludeTools] } : {}),
 		...(recoveryAgentConfig.allowNestedSubagents !== undefined ? { allowNestedSubagents: recoveryAgentConfig.allowNestedSubagents } : {}),
 		...(recoveryAgentConfig.allowedAgents !== undefined ? { allowedAgents: [...recoveryAgentConfig.allowedAgents] } : {}),
@@ -2217,7 +2219,7 @@ export function executeAsyncSingle(
 						...(modelOrigin === "inherited" ? { skipPrimaryModelVerification: true } : {}),
 						...(availableModels && availableModels.length > 0 ? { modelVerificationRegistry: availableModels } : {}),
 						...(ctx.modelResponseAliases ? { modelResponseAliases: ctx.modelResponseAliases } : {}),
-						tools: agentConfig.tools,
+						tools: effectiveTools,
 						excludeTools: agentConfig.excludeTools,
 						allowNestedSubagents: agentConfig.allowNestedSubagents,
 						allowedAgents: agentConfig.allowedAgents,

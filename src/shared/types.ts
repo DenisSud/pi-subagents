@@ -2582,6 +2582,8 @@ export interface RunSyncOptions {
 	modelScope?: ModelScopeRule | ModelScopeRule[];
 	/** Skills to make available (overrides agent default if provided) */
 	skills?: string[];
+	/** Tools to make available (overrides the agent's allowlist for this launch) */
+	tools?: string[];
 	structuredOutput?: {
 		schema: JsonSchemaObject;
 		schemaPath: string;

@@ -265,6 +265,13 @@ const SubagentParamProperties = {
 	outputMode: Type.Optional(OutputModeOverride),
 	maxOutput: Type.Optional(Type.Object({ bytes: Type.Optional(Type.Integer({ minimum: 1 })), lines: Type.Optional(Type.Integer({ minimum: 1 })) }, { additionalProperties: false })),
 	skill: Type.Optional(SkillOverride),
+	tools: Type.Optional(Type.Unsafe({
+		anyOf: [
+			{ type: "array", items: { type: "string" } },
+			{ type: "string" },
+		],
+		description: "Tool allowlist for this child; CSV or array. Replaces the agent default for this launch.",
+	})),
 	model: Type.Optional(Type.String({ description: "Child model provider/id; bare id only if unique. Suffix :off/minimal/low/medium/high/xhigh/max overrides agent thinking default." })),
 	fast: Type.Optional(Type.Boolean({ description: "Native OpenAI-Codex priority tier; default false, may cost more/quota." })),
 	outputSchema: Type.Optional(OutputSchemaOverride),
@@ -293,7 +300,7 @@ export const SubagentOptionParams = Type.Object(SubagentOptionProperties, { addi
 
 const ModelTopLevelProperties = {
 	agent, task, workflow, args, async, model, cwd, worktree, output, action, id, message,
-	options: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object", additionalProperties: true, description: "Every field not listed here, such as acceptance, timeoutMs, context, view and index; guide tool-reference/parameter-reference." })),
+	options: Type.Optional(Type.Unsafe<Record<string, unknown>>({ type: "object", additionalProperties: true, description: "Any field not listed here, e.g. skill, tools, acceptance, timeoutMs, context, view; guide tool-reference/parameter-reference." })),
 };
 
 export const SubagentParams = keepTopLevelParameterDescriptions(Type.Object(ModelTopLevelProperties));
