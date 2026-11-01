@@ -299,3 +299,68 @@ export async function steerAsyncRun(input: {
 		details: { mode: "management", results: [], steering: result },
 	};
 }
+
+/** Pause a running async child from the fleet. Resume stays a separate explicit action. */
+export function interruptAsyncRun(input: {
+	state: SubagentState;
+	runId: string;
+	asyncDir: string;
+}): AgentToolResult<Details> {
+	const status = readStatus(input.asyncDir);
+	if (!status) {
+		return {
+			content: [{ type: "text", text: `No status was found for async run '${input.runId}'.` }],
+			isError: true,
+			details: { mode: "management", results: [] },
+		};
+	}
+	if (!ownsRun(input.state.currentSessionId, status.sessionId)) {
+		return {
+			content: [{ type: "text", text: `Async run ${status.runId || input.runId} belongs to another session.` }],
+			isError: true,
+			details: { mode: "management", results: [] },
+		};
+	}
+	if (status.state !== "running") {
+		return {
+			content: [{ type: "text", text: `Async run ${status.runId || input.runId} is ${status.state}; only a running run can be paused.` }],
+			isError: true,
+			details: { mode: "management", results: [] },
+		};
+	}
+	if (status.mode === "workflow") {
+		return {
+			content: [{ type: "text", text: `Pause is unsupported for async workflow ${status.runId || input.runId}; use stop instead.` }],
+			isError: true,
+			details: { mode: "management", results: [] },
+		};
+	}
+	const activeSteps = status.steps?.filter((step) => step.status === "running") ?? [];
+	if (activeSteps.length > 0 && activeSteps.every((step) => step.runner?.type === "external-cli" || step.runner?.type === "external-job")) {
+		return {
+			content: [{ type: "text", text: `Pause is unsupported for external async run ${status.runId || input.runId}; use stop instead.` }],
+			isError: true,
+			details: { mode: "management", results: [] },
+		};
+	}
+	try {
+		deliverInterruptRequest({ asyncDir: input.asyncDir, source: "fleet-pause" });
+		const tracked = input.state.asyncJobs.get(input.runId);
+		if (tracked) {
+			delete tracked.activityState;
+			tracked.updatedAt = Date.now();
+		}
+		const id = status.runId || input.runId;
+		return {
+			content: [{ type: "text", text: `Pause requested for async run ${id}. Resume with subagent({ action: "resume", id: "${id}", message: "..." }).` }],
+			details: { mode: "management", results: [] },
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			content: [{ type: "text", text: `Failed to pause async run ${status.runId || input.runId}: ${message}` }],
+			isError: true,
+			details: { mode: "management", results: [] },
+		};
+	}
+}

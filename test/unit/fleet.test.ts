@@ -1778,6 +1778,51 @@ describe("native subagent fleet", () => {
 		}
 	});
 
+	it("pauses the selected async child with space", async () => {
+		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-pause-"));
+		try {
+			const asyncDir = writeAsyncRun(root, { id: "async-pause" });
+			const state = stateForTest();
+			const calls: Array<{ runId: string; asyncDir: string; index?: number }> = [];
+			const component = new SubagentFleetComponent(
+				{ terminal: { rows: 28, columns: 100 }, requestRender() {} } as never,
+				theme as never,
+				state,
+				() => {},
+				{
+					asyncDirRoot: root,
+					resultsDir: path.join(root, "results"),
+					refreshMs: 60_000,
+					actions: {
+						async steer() {
+							return { text: "unused" };
+						},
+						pause(input) {
+							calls.push(input);
+							return { text: "Pause requested." };
+						},
+						stop() {
+							return { text: "unexpected" };
+						},
+						async inspect() {
+							return { text: "unexpected" };
+						},
+					},
+				},
+			);
+			try {
+				component.handleInput(" ");
+				await new Promise((resolve) => setImmediate(resolve));
+				assert.deepEqual(calls, [{ runId: "async-pause", asyncDir, index: 0 }]);
+				assert.ok(component.render(100).some((line) => line.includes("Pause requested.")));
+			} finally {
+				component.dispose();
+			}
+		} finally {
+			fs.rmSync(root, { recursive: true, force: true });
+		}
+	});
+
 	it("explains unavailable controls for completed async children", () => {
 		const root = fs.mkdtempSync(path.join(os.tmpdir(), "pi-fleet-unavailable-"));
 		try {

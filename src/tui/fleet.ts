@@ -11,7 +11,7 @@ import { decodeUtf8Tail } from "../shared/utf8.ts";
 import { readStatus } from "../shared/utils.ts";
 import { formatAsyncRunTranscript } from "../runs/background/fleet-view.ts";
 import { listAsyncRuns, type AsyncRunSummary } from "../runs/background/async-status.ts";
-import { steerAsyncRun } from "../runs/foreground/async-steering-action.ts";
+import { interruptAsyncRun, steerAsyncRun } from "../runs/foreground/async-steering-action.ts";
 import type { SteerDeliveryMode } from "../runs/background/control-channel.ts";
 import { stopAsyncRun } from "../runs/foreground/async-stop-action.ts";
 import { resolveWorkflowForegroundSteeringTarget, steerWorkflowForegroundTarget } from "../runs/foreground/workflow-foreground-steering.ts";
@@ -45,6 +45,7 @@ export const DEFAULT_FLEET_KEYBINDINGS: Record<FleetKeybindingAction, string[]> 
 	refresh: ["r", "R"],
 	steer: ["s"],
 	inspect: ["return", "H"],
+	pause: ["space"],
 	stop: ["D"],
 	toggleTools: ["x", "X", "ctrl+o"],
 };
@@ -98,6 +99,7 @@ export interface FleetActionResult {
 
 export interface FleetActionHandlers {
 	steer(input: { runId: string; asyncDir: string; index?: number; message: string; mode: SteerDeliveryMode }): Promise<FleetActionResult>;
+	pause?(input: { runId: string; asyncDir: string; index?: number }): Promise<FleetActionResult> | FleetActionResult;
 	stop(input: { runId: string; asyncDir: string; index?: number }): Promise<FleetActionResult> | FleetActionResult;
 	inspect?(input: { runId: string; asyncDir: string; index?: number }): Promise<FleetActionResult>;
 	redoPrompt?(input: { runId: string; index: number; guidance: string; control?: ForegroundRunControl }): Promise<FleetActionResult>;
@@ -949,6 +951,18 @@ export class SubagentFleetComponent implements Component {
 		return { item };
 	}
 
+	private selectedPauseAction(): { runId: string; asyncDir: string; index?: number } | { reason: string } {
+		const item = this.snapshot.items[this.selected];
+		if (!item) return { reason: "No child is selected." };
+		if (item.kind === "foreground-active") {
+			if (!item.control.interrupt) return { reason: "This foreground run has no active child to pause." };
+			return { runId: item.runId, asyncDir: "", ...(item.index !== undefined ? { index: item.index } : {}) };
+		}
+		const target = this.selectedAsyncAction();
+		if ("reason" in target) return target;
+		return { runId: target.item.runId, asyncDir: target.item.run.asyncDir, ...(target.item.index !== undefined ? { index: target.item.index } : {}) };
+	}
+
 	private selectedSteerAction(): { runId: string; asyncDir: string; index?: number } | { reason: string } {
 		const item = this.snapshot.items[this.selected];
 		if (item?.kind === "foreground-active" && item.control.parentWorkflowRunId) {
@@ -993,7 +1007,7 @@ export class SubagentFleetComponent implements Component {
 		} else if (this.stopConfirming) {
 			const selected = this.snapshot.items[this.selected];
 			lines.push(this.theme.fg("warning", `Confirm stop for async run ${selected?.runId ?? "selected run"}?`));
-			lines.push(this.theme.fg("dim", "Stop ends the run; use interrupt for a resumable pause. Enter/Y confirms · N returns · Esc cancels"));
+			lines.push(this.theme.fg("dim", "Stop ends the run; space pauses for a resume. Enter/Y confirms · N returns · Esc cancels"));
 		} else if (this.actionNotice) {
 			lines.push(this.theme.fg(this.actionNotice.isError ? "error" : "success", this.actionNotice.text));
 		}
@@ -1208,6 +1222,12 @@ export class SubagentFleetComponent implements Component {
 			}
 			return;
 		}
+		if (matchesFleetAction(data, this.keybindings, "pause")) {
+			const target = this.selectedPauseAction();
+			if ("reason" in target || !this.options.actions?.pause) this.setActionNotice({ text: "reason" in target ? target.reason : "Pause is unavailable in this context.", isError: true });
+			else this.runAction(() => Promise.resolve(this.options.actions!.pause!({ runId: target.runId, asyncDir: target.asyncDir, ...(target.index !== undefined ? { index: target.index } : {}) })));
+			return;
+		}
 		if (matchesFleetAction(data, this.keybindings, "stop")) {
 			const target = this.selectedAsyncAction();
 			if ("reason" in target || !this.options.actions) this.setActionNotice({ text: "reason" in target ? target.reason : "Fleet controls are unavailable in this context.", isError: true });
@@ -1385,7 +1405,7 @@ export class SubagentFleetComponent implements Component {
 			? ` j/k child · 1/2/3 view · g redo with guidance · c copy · Esc close Prompt Audit · ${position}`
 			: selected?.kind === "external"
 				? ` ${bindingLabel(this.keybindings, "selectUp")}/${bindingLabel(this.keybindings, "selectDown")} job · display-only · ${bindingLabel(this.keybindings, "refresh")} refresh · ${bindingLabel(this.keybindings, "close")} close · ${position}`
-				: ` ${bindingLabel(this.keybindings, "selectUp")}/${bindingLabel(this.keybindings, "selectDown")} agent · p Prompt Audit · ${bindingLabel(this.keybindings, "inspect")} Inspect · ${bindingLabel(this.keybindings, "steer")} steer · ${bindingLabel(this.keybindings, "stop")} stop · ${bindingLabel(this.keybindings, "toggleTools")} tools · ${bindingLabel(this.keybindings, "refresh")} refresh · ${bindingLabel(this.keybindings, "close")} close · ${position}`;
+				: ` ${bindingLabel(this.keybindings, "selectUp")}/${bindingLabel(this.keybindings, "selectDown")} agent · p Prompt Audit · ${bindingLabel(this.keybindings, "inspect")} Inspect · ${bindingLabel(this.keybindings, "steer")} steer · ${bindingLabel(this.keybindings, "pause")} pause · ${bindingLabel(this.keybindings, "stop")} stop · ${bindingLabel(this.keybindings, "toggleTools")} tools · ${bindingLabel(this.keybindings, "refresh")} refresh · ${bindingLabel(this.keybindings, "close")} close · ${position}`;
 		lines.push(this.theme.fg("border", "│") + fit(this.theme.fg("dim", footer), innerWidth) + this.theme.fg("border", "│"));
 		lines.push(this.theme.fg("border", `╰${"─".repeat(innerWidth)}╯`));
 		return lines.map((line) => truncateToWidth(line, width));
@@ -1432,6 +1452,15 @@ export async function openSubagentFleet(ctx: ExtensionContext, state: SubagentSt
 				mode: input.mode,
 				location: { asyncDir: input.asyncDir, resolvedId: input.runId } as Parameters<typeof steerAsyncRun>[0]["location"],
 			}), `Failed to steer async run ${input.runId}.`);
+		},
+		pause: (input: { runId: string; asyncDir: string; index?: number }) => {
+			const control = state.foregroundControls.get(input.runId);
+			if (control?.interrupt) {
+				return control.interrupt()
+					? { text: `Pause requested for foreground run ${input.runId}.` }
+					: { text: `Foreground run ${input.runId} has no active child step to pause.`, isError: true };
+			}
+			return firstToolResultText(interruptAsyncRun({ state, runId: input.runId, asyncDir: input.asyncDir }), `Failed to pause async run ${input.runId}.`);
 		},
 		stop: (input: { runId: string; asyncDir: string; index?: number }) => firstToolResultText(stopAsyncRun(state, input.runId, undefined, { asyncDir: input.asyncDir, resolvedId: input.runId }), `Failed to stop async run ${input.runId}.`),
 		inspect: async (input: { runId: string; asyncDir: string; index?: number }) => firstToolResultText(await handleInspectorAction("inspector.open", {

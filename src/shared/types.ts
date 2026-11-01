@@ -2659,6 +2659,7 @@ export const FLEET_KEYBINDING_ACTIONS = [
 	"refresh",
 	"steer",
 	"inspect",
+	"pause",
 	"stop",
 	"toggleTools",
 ] as const;

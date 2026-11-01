@@ -123,6 +123,7 @@ Default keys:
 - `Esc` — close
 - `Enter` — open the selected inspectable async child through the available Inspect plugin
 - `s` — compose an acknowledged message to a selected live async child; Tab cycles `steer`, `follow_up`, and `auto`
+- `space` — pause the selected running child; resume it with an explicit `subagent({ action: "resume", ... })`
 - `D` — stop a selected child's top-level async run after confirmation
 - `H` — open the selected active async child through the available Inspect plugin
 
